@@ -1,5 +1,16 @@
 #!/usr/bin/env python3
 
+################################################
+#
+# This script makes fake data in the same
+# format as that on MODVOLC
+#
+# Right now, it has a very simple way of
+# creating eruption events and modeling
+# the kind of radiation and NIT observed
+#
+################################################
+
 import os
 import math
 import random
@@ -25,13 +36,13 @@ errorfile = open(cwd+errorfilename,"w")
 # Name of file holding data
 file1filename = "file1.txt"
 
-# Seed for random
-SEED = 123
-random.seed(SEED)
-
 ################################################
 # Variables
 ################################################
+
+# Seed for random
+SEED = 123
+random.seed(SEED)
 
 # What time to start at (unix time in seconds
 # starting from 00:00:00 Jan 1, 1970)
@@ -71,6 +82,23 @@ longitude = -155.30000
 # Latitude of Location (degrees?)
 latitude = 19.40000
 
+# The wavelengths in micrometers we are
+# measuring at.
+# There are two at 3.959 to reflect the
+# fact that they have different dynamic
+# ranges
+# (not like I do anything with it though)
+wavelengths = [3.959,3.959,1.64,11.03,12.02]
+
+# Constants for the Spectral Radiance
+# formula; c1 has units W * micrometer^4
+# / m^2 whereas c2 has units micrometer
+# * Kelvin
+c1 = 3.74151e8
+c2 = 1.43879e4
+
+# Absolute Zero in Celsius
+absolute_zero = -273.15
 
 ################################################
 # Useful Functions
@@ -94,6 +122,19 @@ def getUCT(seconds):
     Min = TotalMin % 60
 
     return Year,Month,Day,Hour,Min
+
+# Computes the satellite and sun's
+# zenith and azimuth given its
+# time of day and date
+
+def getGPS(Month,Day,Hour,Min):
+
+    SatZen = 90.0
+    SatAzi = 90.0
+    SunZen = 90.0
+    SunAzi = 90.0
+
+    return SatZen,SatAzi,SunZen,SunAzi
 
 # Simple Box-Muller to give a flyover event
 # over a normal distribution
@@ -141,9 +182,17 @@ def getEvent():
 
 def getSpectralRadiance(temperature,wavelength):
 
-    return c1 / ((wavelength**5)* \
+    candidate_radiance =\
+            c1 / ((wavelength**5)* \
             (math.exp(c2 / (wavelength * \
                       temperature)) - 1.0))
+
+#   If the radiance is too large, the value
+#   overfills and returns -10.00
+    if (candidate_radiance > 99.99):
+        return -10.00
+    else:
+        return candidate_radiance
 
 # Evaluate NTI given the two wavelengths
 # (4 micrometer and 12 micrometer)
@@ -154,12 +203,12 @@ def getNTI(wavelength4,wavelength12):
     return (wavelength4 - wavelength12) / \
            (wavelength4 + wavelength12)
 
-# Get the average temperature, adjusted
-# by time of day and season
+# Get the average temperature in Kelvin,
+# adjusted by time of day and season
 
 def getAverageTemperature(month,day,hour,minute):
 
-    temperature = 27.0
+    temperature = 27.0 - absolute_zero
 
     return temperature
 
@@ -168,9 +217,17 @@ def getAverageTemperature(month,day,hour,minute):
 ################################################
     
 file1 = open(cwd+file1filename,"w")
-file1.write("{:10s} {:3s} {:4s} {:2s} {:2s} {:2s} {:2s}\n".format(\
-            "UNIX_Time","Sat","Year","Mo","Dy","Hr","Mn") )
-
+file1.write(("{:10s} {:3s} {:4s} {:2s} {:2s} {:2s} {:2s}"+\
+             " {:11s} {:10s}" + \
+             " {:7s} {:7s} {:7s} {:7s} {:7s}" + \
+             " {:6s} {:6s} {:6s} {:6s}" + \
+             " {:4s} {:4s} {:6s}" + \
+             "\n").format(\
+            "UNIX_Time","Sat","Year","Mo","Dy","Hr","Mn",\
+            "Longitude","Latitude",\
+            "B21","B22","B6","B31","B32",\
+            "SatZen","SatAzi","SunZen","SunAzi",\
+            "Line","Samp","NTI") )
 t = UNIXTIMESTART
 UNIXTIMEEND = UNIXTIMESTART + TOTALTIME
 
@@ -192,13 +249,55 @@ while True:
 #       Always check if we are going over time
         if (t+Tnext > UNIXTIMEEND): break
 
+#       Calculate the Season, Day, Time, etc.
+        Year,Month,Day,Hour,Min = getUCT(t)
+
         print("Got here!")
 
+#       Use our advanced algorithm to get
+#       a baseline temperature
+        Temp = getAverageTemperature(\
+                Month,Day,Hour,Min)
+
+#       Use our advanced algorithm to get
+#       a temperature during this event
+        Temp = Temp + 1400
+
+#       Calculate the radiance detected in each
+#       band assuming a perfect black-body
+#       with no noise
+        radiances = []
+        for i in range(5):
+            radiances.append(getSpectralRadiance(\
+                    Temp,wavelengths[i]))
+
+#       Use our advanced algorithm to get
+#       the satellite and sun's location
+        SatZen,SatAzi,SunZen,SunAzi = \
+                getGPS(Month,Day,Hour,Min)
+
+#       Get the line and sample of the
+#       hotspot pixel
+        Line = 6900
+        Sample = 420
+
+#       Calculate the NTI of the hotspot
+        NTI = getNTI(radiances[1],radiances[4])
+
 #       Write to the file
-        Year,Month,Day,Hour,Min = getUCT(t)
         print(t,"A",Year,Month,Day,Hour,Min)
-        file1.write("{:10d}   {:1s} {:4d} {:02d} {:02d} {:02d} {:02d}\n".format(\
-                t,"A",Year,Month,Day,Hour,Min) )
+        file1.write(("{:10d}   {:1s} {:4d} {:02d} {:02d} {:02d} {:02d}" + \
+                     " {: 10.6f} {: 10.6f}" + \
+                     " {:7.3f} {:7.3f} {:7.3f} {:7.3f} {:7.3f}" + \
+                     " {: 6.2f} {: 6.2f} {: 6.2f} {: 6.2f}" + \
+                     " {:4d} {:4d} {: 4.2f}" + \
+                     "\n").format(\
+                    t,"A",Year,Month,Day,Hour,Min,\
+                    longitude,latitude,radiances[0],\
+                    radiances[1],radiances[2],\
+                    radiances[3],radiances[4],\
+                    SatZen,SatAzi,SunZen,SunAzi,\
+                    Line,Sample,NTI) )
 
 #       The next recording occurs when there is
 #       another flyover
