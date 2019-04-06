@@ -212,6 +212,23 @@ def getAverageTemperature(month,day,hour,minute):
 
     return temperature
 
+# Get the ESTIMATED average temperature
+# and its error in Kelvin; also compute
+# the excess radiance expected in W /
+# (m^2 * sr * micrometer)
+
+def getThermal(radiances):
+
+    return 27.0 - absolute_zero, 2.0, 17.0
+
+# Get the sun-glint angle in degrees,
+# given the location of the satellite
+# and the sun
+
+def getGlint(SatZen,SatAzi,SunZen,SunAzi):
+
+    return 120.0
+
 ################################################
 # The Main Loop
 ################################################
@@ -221,13 +238,15 @@ file1.write(("{:10s} {:3s} {:4s} {:2s} {:2s} {:2s} {:2s}"+\
              " {:11s} {:10s}" + \
              " {:7s} {:7s} {:7s} {:7s} {:7s}" + \
              " {:6s} {:6s} {:6s} {:6s}" + \
-             " {:4s} {:4s} {:6s}" + \
+             " {:4s} {:4s} {:5s}" + \
+             " {:8s} {:6s} {:5s} {:3s}" + \
              "\n").format(\
             "UNIX_Time","Sat","Year","Mo","Dy","Hr","Mn",\
             "Longitude","Latitude",\
             "B21","B22","B6","B31","B32",\
             "SatZen","SatAzi","SunZen","SunAzi",\
-            "Line","Samp","NTI") )
+            "Line","Samp","NTI",\
+            "Glint","Excess","Temp","Err") )
 t = UNIXTIMESTART
 UNIXTIMEEND = UNIXTIMESTART + TOTALTIME
 
@@ -284,6 +303,15 @@ while True:
 #       Calculate the NTI of the hotspot
         NTI = getNTI(radiances[1],radiances[4])
 
+#       Use our advanced algorithm to get the
+#       sun-glint angle
+        Glint = getGlint(SatZen,SatAzi,SunZen,SunAzi)
+
+#       Use our advanced algoritm to get the
+#       estimated temperature and corresponding
+#       excess radiation of the hotspot
+        AvgTemp, AvgTempErr, Excess = getThermal(radiances)
+
 #       Write to the file
         print(t,"A",Year,Month,Day,Hour,Min)
         file1.write(("{:10d}   {:1s} {:4d} {:02d} {:02d} {:02d} {:02d}" + \
@@ -291,13 +319,15 @@ while True:
                      " {:7.3f} {:7.3f} {:7.3f} {:7.3f} {:7.3f}" + \
                      " {: 6.2f} {: 6.2f} {: 6.2f} {: 6.2f}" + \
                      " {:4d} {:4d} {: 4.2f}" + \
+                     " {:7.3f} {:7.3f} {:5.1f} {:3.1f}" + \
                      "\n").format(\
                     t,"A",Year,Month,Day,Hour,Min,\
                     longitude,latitude,radiances[0],\
                     radiances[1],radiances[2],\
                     radiances[3],radiances[4],\
                     SatZen,SatAzi,SunZen,SunAzi,\
-                    Line,Sample,NTI) )
+                    Line,Sample,NTI,\
+                    Glint,Excess,AvgTemp,AvgTempErr) )
 
 #       The next recording occurs when there is
 #       another flyover
